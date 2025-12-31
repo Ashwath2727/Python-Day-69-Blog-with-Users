@@ -1,17 +1,22 @@
 from datetime import date
-from flask import Flask, abort, render_template, redirect, url_for, flash
+from urllib.parse import quote
+
+from flask import Flask, abort, render_template, redirect, url_for, flash, request
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
-from flask_gravatar import Gravatar
+# from flask_gravatar import Gravatar
 from flask_login import UserMixin, login_user, LoginManager, current_user, logout_user
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, String, Text
-from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash
+# from flask_sqlalchemy import SQLAlchemy
+# from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
+# from sqlalchemy import Integer, String, Text
+# from functools import wraps
+# from werkzeug.security import generate_password_hash, check_password_hash
 # Import your forms from the forms.py
 from forms import CreatePostForm
 
+from extensions import db
+from models.blog_post import BlogPost
+from queries.blog_post_queries import BlogPostQueries
 
 '''
 Make sure the required packages are installed: 
@@ -35,30 +40,28 @@ Bootstrap5(app)
 
 
 # CREATE DATABASE
-class Base(DeclarativeBase):
-    pass
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
-db = SQLAlchemy(model_class=Base)
+DB_NAME = "postgres"
+DB_USER = "postgres"
+DB_PASSWORD = quote("ashwath@MVN123")
+DB_HOST = "localhost"
+
+SQLALCHEMY_DB_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:5432/{DB_NAME}"
+app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DB_URI
+app.config["SQLALCHEMY_ECHO"] = True
+
 db.init_app(app)
+
+blog_post = BlogPost()
+blog_post_queries = BlogPostQueries()
 
 
 # CONFIGURE TABLES
-class BlogPost(db.Model):
-    __tablename__ = "blog_posts"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
-    subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
-    date: Mapped[str] = mapped_column(String(250), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False)
-    author: Mapped[str] = mapped_column(String(250), nullable=False)
-    img_url: Mapped[str] = mapped_column(String(250), nullable=False)
+
 
 
 # TODO: Create a User table for all your registered users. 
 
 
-with app.app_context():
-    db.create_all()
 
 
 # TODO: Use Werkzeug to hash the user's password when creating a new user.
@@ -80,16 +83,25 @@ def logout():
 
 @app.route('/')
 def get_all_posts():
-    result = db.session.execute(db.select(BlogPost))
-    posts = result.scalars().all()
-    return render_template("index.html", all_posts=posts)
+    result = blog_post_queries.get_all_posts()
+
+    if result.state != "error":
+        all_posts = result.data
+        return render_template("index.html", all_posts=all_posts), result.code
+
+    return render_template("error.html", error=result.message, code=result.code), result.code
 
 
 # TODO: Allow logged-in users to comment on posts
 @app.route("/post/<int:post_id>")
 def show_post(post_id):
-    requested_post = db.get_or_404(BlogPost, post_id)
-    return render_template("post.html", post=requested_post)
+    result = blog_post_queries.get_post_by_id(post_id)
+
+    if result.state == "success":
+        requested_post = result.data[0]
+        return render_template("post.html", post=requested_post), result.code
+
+    return render_template("error.html", error=result.message, code=result.code), result.code
 
 
 # TODO: Use a decorator so only an admin user can create a new post
@@ -102,44 +114,68 @@ def add_new_post():
             subtitle=form.subtitle.data,
             body=form.body.data,
             img_url=form.img_url.data,
-            author=current_user,
+            # author=current_user,
+            author="Ashwath",
             date=date.today().strftime("%B %d, %Y")
         )
-        db.session.add(new_post)
-        db.session.commit()
-        return redirect(url_for("get_all_posts"))
+
+        result = blog_post_queries.add_new_post(new_post)
+
+        if result.state == "success":
+            return redirect(url_for("get_all_posts")), result.code
+        else:
+            return render_template("error.html", error=result.message, code=result.code), result.code
     return render_template("make-post.html", form=form)
 
 
 # TODO: Use a decorator so only an admin user can edit a post
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
 def edit_post(post_id):
-    post = db.get_or_404(BlogPost, post_id)
+    print(f"inside edit_post post_id ====> {post_id}")
+    res = blog_post_queries.get_post_by_id(post_id)
+    requested_post = res.data[0]
+
     edit_form = CreatePostForm(
-        title=post.title,
-        subtitle=post.subtitle,
-        img_url=post.img_url,
-        author=post.author,
-        body=post.body
+        title=requested_post.title,
+        subtitle=requested_post.subtitle,
+        img_url=requested_post.img_url,
+        body=requested_post.body,
     )
-    if edit_form.validate_on_submit():
-        post.title = edit_form.title.data
-        post.subtitle = edit_form.subtitle.data
-        post.img_url = edit_form.img_url.data
-        post.author = current_user
-        post.body = edit_form.body.data
-        db.session.commit()
-        return redirect(url_for("show_post", post_id=post.id))
-    return render_template("make-post.html", form=edit_form, is_edit=True)
+
+    if request.method == "POST":
+        requested_post_id = requested_post.id
+        print(f"inside edit_post requested_post id ====> {id}")
+        if edit_form.validate_on_submit():
+            edited_post = BlogPost(
+                title=edit_form.title.data,
+                subtitle=edit_form.subtitle.data,
+                author="Ashwath",
+                img_url=edit_form.img_url.data,
+                body=edit_form.body.data,
+                date=requested_post.date,
+            )
+
+            print(f"edited_post ====> {edited_post}")
+
+            result = blog_post_queries.update_post(edited_post, requested_post)
+
+            if result.state == "success":
+                return redirect(url_for("show_post", post_id=requested_post_id)), result.code
+            else:
+                return render_template("error.html", error=result.message, code=result.code), result.code
+
+    return render_template("make-post.html", add_post_form=edit_form, post_id=post_id)
 
 
 # TODO: Use a decorator so only an admin user can delete a post
 @app.route("/delete/<int:post_id>")
 def delete_post(post_id):
-    post_to_delete = db.get_or_404(BlogPost, post_id)
-    db.session.delete(post_to_delete)
-    db.session.commit()
-    return redirect(url_for('get_all_posts'))
+    result = blog_post_queries.delete_post(post_id)
+
+    if result.state == "success":
+        return redirect(url_for('get_all_posts')), result.code
+    else:
+        return render_template("error.html", error=result.message, code=result.code), result.code
 
 
 @app.route("/about")
@@ -153,4 +189,10 @@ def contact():
 
 
 if __name__ == "__main__":
+    print("==================> creating tables")
+
+    with app.app_context():
+        db.create_all()
+
+    print("==================> finished creating tables")
     app.run(debug=True, port=5002)
