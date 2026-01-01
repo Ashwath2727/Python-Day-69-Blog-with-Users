@@ -4,7 +4,7 @@ from urllib.parse import quote
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
-from flask_login import LoginManager, current_user, login_user
+from flask_login import LoginManager, current_user, login_user, logout_user
 # from flask_gravatar import Gravatar
 # from flask_sqlalchemy import SQLAlchemy
 # from functools import wraps
@@ -102,7 +102,7 @@ def register():
 
 
 
-    return render_template("register.html", register_form=register_form, logged_in=current_user.is_authenticated)
+    return render_template("register.html", register_form=register_form)
 
 
 # TODO: Retrieve a user from the database based on their email. 
@@ -123,7 +123,7 @@ def login():
                     login_user(result.data)
                     print(f"login successful =====================> {current_user.is_authenticated}")
 
-                    return redirect(url_for("get_all_posts", logged_in=current_user.is_authenticated))
+                    return redirect(url_for("get_all_posts"))
 
                 else:
                     flash("Password is incorrect... Please try again!!!")
@@ -136,11 +136,12 @@ def login():
                 else:
                     return render_template("error.html", error=result.message, code=result.code), result.code
 
-    return render_template("login.html", login_form=login_form, logged_in=current_user.is_authenticated)
+    return render_template("login.html", login_form=login_form)
 
 
 @app.route('/logout')
 def logout():
+    logout_user()
     return redirect(url_for('get_all_posts'))
 
 
@@ -150,7 +151,7 @@ def get_all_posts():
 
     if result.state != "error":
         all_posts = result.data
-        return render_template("index.html", all_posts=all_posts, logged_in=current_user.is_authenticated), result.code
+        return render_template("index.html", all_posts=all_posts), result.code
 
     return render_template("error.html", error=result.message, code=result.code), result.code
 
@@ -185,10 +186,10 @@ def add_new_post():
         result = blog_post_queries.add_new_post(new_post)
 
         if result.state == "success":
-            return redirect(url_for("get_all_posts", logged_in=current_user.is_authenticated)), result.code
+            return redirect(url_for("get_all_posts")), result.code
         else:
             return render_template("error.html", error=result.message, code=result.code), result.code
-    return render_template("make-post.html", form=form, logged_in=current_user.is_authenticated)
+    return render_template("make-post.html", form=form)
 
 
 # TODO: Use a decorator so only an admin user can edit a post
@@ -223,11 +224,11 @@ def edit_post(post_id):
             result = blog_post_queries.update_post(edited_post, requested_post)
 
             if result.state == "success":
-                return redirect(url_for("show_post", post_id=requested_post_id, logged_in=current_user.is_authenticated)), result.code
+                return redirect(url_for("show_post", post_id=requested_post_id)), result.code
             else:
                 return render_template("error.html", error=result.message, code=result.code), result.code
 
-    return render_template("make-post.html", add_post_form=edit_form, post_id=post_id, logged_in=current_user.is_authenticated)
+    return render_template("make-post.html", add_post_form=edit_form, post_id=post_id)
 
 
 # TODO: Use a decorator so only an admin user can delete a post
@@ -236,7 +237,7 @@ def delete_post(post_id):
     result = blog_post_queries.delete_post(post_id)
 
     if result.state == "success":
-        return redirect(url_for('get_all_posts', logged_in=current_user.is_authenticated)), result.code
+        return redirect(url_for('get_all_posts')), result.code
     else:
         return render_template("error.html", error=result.message, code=result.code), result.code
 
