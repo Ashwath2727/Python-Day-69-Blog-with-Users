@@ -1,22 +1,22 @@
 from datetime import date
 from urllib.parse import quote
 
-from flask import Flask, abort, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, request
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
 # from flask_gravatar import Gravatar
-from flask_login import UserMixin, login_user, LoginManager, current_user, logout_user
 # from flask_sqlalchemy import SQLAlchemy
-# from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
-# from sqlalchemy import Integer, String, Text
 # from functools import wraps
-# from werkzeug.security import generate_password_hash, check_password_hash
-# Import your forms from the forms.py
-from forms import CreatePostForm
+from werkzeug.security import generate_password_hash, check_password_hash
+# Import your forms from the create_post_form.py
+from forms.create_post_form import CreatePostForm
 
 from extensions import db
+from forms.register_form import RegisterForm
 from models.blog_post import BlogPost
+from models.user import User
 from queries.blog_post_queries import BlogPostQueries
+from queries.user_queries import UserQueries
 
 '''
 Make sure the required packages are installed: 
@@ -53,6 +53,7 @@ db.init_app(app)
 
 blog_post = BlogPost()
 blog_post_queries = BlogPostQueries()
+user_queries = UserQueries()
 
 
 # CONFIGURE TABLES
@@ -60,14 +61,31 @@ blog_post_queries = BlogPostQueries()
 
 
 # TODO: Create a User table for all your registered users. 
-
-
+user = User()
 
 
 # TODO: Use Werkzeug to hash the user's password when creating a new user.
-@app.route('/register')
+@app.route('/register', methods=["GET", "POST"])
 def register():
-    return render_template("register.html")
+    register_form = RegisterForm()
+
+    if request.method == "POST":
+        if register_form.validate_on_submit():
+            new_user = User(
+                name=register_form.name.data,
+                email=register_form.email.data,
+                password=generate_password_hash(register_form.password.data, method="pbkdf2:sha256", salt_length=8),
+            )
+
+            print(new_user)
+
+            result = user_queries.add_user(new_user)
+
+            return redirect(url_for("login")), result.code
+
+
+
+    return render_template("register.html", register_form=register_form)
 
 
 # TODO: Retrieve a user from the database based on their email. 
