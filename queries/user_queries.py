@@ -52,11 +52,57 @@ class UserQueries:
                 return result
 
             else:
-                result = ResultMessage("", "error", f"User with that name {new_user.name} already exists", 500)
+                result = ResultMessage(None, "error", f"User with that name {new_user.name} already exists", 500)
                 print(result.message)
                 return result
 
         except Exception as e:
             result = ResultMessage("", "error", f"Error adding user {e}", 500)
+            print(result.message)
+            return result
+
+
+    def get_user_by_email(self, email):
+        try:
+            print("==================> Getting user by email")
+
+            requested_user = User.query.filter_by(email=email).all()
+
+            if len(requested_user) == 0:
+                result = ResultMessage(None, "error", f"No user found with email {email}", 404)
+                print(result.message)
+                print("====================> Finished getting user by email")
+                return result
+
+            else:
+                result = ResultMessage(requested_user[0], "success", f"User with that email {email} found", 200)
+                print(result.message)
+                print("====================> Finished getting user by email")
+                return result
+
+        except Exception as e:
+            result = ResultMessage("", "error", f"Error getting user by email {e}", 500)
+            print(result.message)
+            return result
+
+    def get_user_by_id(self, user_id):
+        try:
+            print("==================> Getting user by id")
+
+            requested_user = User.query.filter_by(id=user_id).all()
+
+            if len(requested_user) == 0:
+                result = ResultMessage(None, "error", f"No user found with id {user_id}", 404)
+                print(result.message)
+                print("====================> Finished getting user by id")
+                return result
+            else:
+                result = ResultMessage(requested_user[0], "success", f"User with id {user_id} found", 200)
+                print(result.message)
+                print("====================> Finished getting user by id")
+                return result
+
+        except Exception as e:
+            result = ResultMessage("", "error", f"Error getting user by id {e}", 500)
             print(result.message)
             return result

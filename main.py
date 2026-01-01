@@ -1,9 +1,10 @@
 from datetime import date
 from urllib.parse import quote
 
-from flask import Flask, render_template, redirect, url_for, request
+from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
+from flask_login import LoginManager, current_user, login_user
 # from flask_gravatar import Gravatar
 # from flask_sqlalchemy import SQLAlchemy
 # from functools import wraps
@@ -12,6 +13,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from forms.create_post_form import CreatePostForm
 
 from extensions import db
+from forms.login_form import LoginForm
 from forms.register_form import RegisterForm
 from models.blog_post import BlogPost
 from models.user import User
@@ -37,6 +39,13 @@ ckeditor = CKEditor(app)
 Bootstrap5(app)
 
 # TODO: Configure Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    user_data = user_queries.get_user_by_id(user_id).data
+    return user_data
 
 
 # CREATE DATABASE
@@ -81,17 +90,53 @@ def register():
 
             result = user_queries.add_user(new_user)
 
-            return redirect(url_for("login")), result.code
+            if result.state == "success":
+                return redirect(url_for("get_all_posts")), result.code
+            else:
+                if result.data is None:
+                    flash("User is already registered... Please login directly!!!")
+                    return redirect(url_for("login"))
+
+                else:
+                    return render_template("error.html", error=result.message, code=result.code), result.code
 
 
 
-    return render_template("register.html", register_form=register_form)
+    return render_template("register.html", register_form=register_form, logged_in=current_user.is_authenticated)
 
 
 # TODO: Retrieve a user from the database based on their email. 
-@app.route('/login')
+@app.route('/login', methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    login_form = LoginForm()
+
+    if request.method == "POST":
+        if login_form.validate_on_submit():
+            email = login_form.email.data
+            password = login_form.password.data
+
+            result = user_queries.get_user_by_email(email)
+            print(result)
+
+            if result.state == "success":
+                if check_password_hash(result.data.password, password):
+                    login_user(result.data)
+                    print(f"login successful =====================> {current_user.is_authenticated}")
+
+                    return redirect(url_for("get_all_posts", logged_in=current_user.is_authenticated))
+
+                else:
+                    flash("Password is incorrect... Please try again!!!")
+                    print("login failed")
+
+            else:
+                if result.data is None:
+                    flash("Email not found... Please register first and then login!!!")
+                    return redirect(url_for("register"))
+                else:
+                    return render_template("error.html", error=result.message, code=result.code), result.code
+
+    return render_template("login.html", login_form=login_form, logged_in=current_user.is_authenticated)
 
 
 @app.route('/logout')
@@ -105,7 +150,7 @@ def get_all_posts():
 
     if result.state != "error":
         all_posts = result.data
-        return render_template("index.html", all_posts=all_posts), result.code
+        return render_template("index.html", all_posts=all_posts, logged_in=current_user.is_authenticated), result.code
 
     return render_template("error.html", error=result.message, code=result.code), result.code
 
@@ -140,10 +185,10 @@ def add_new_post():
         result = blog_post_queries.add_new_post(new_post)
 
         if result.state == "success":
-            return redirect(url_for("get_all_posts")), result.code
+            return redirect(url_for("get_all_posts", logged_in=current_user.is_authenticated)), result.code
         else:
             return render_template("error.html", error=result.message, code=result.code), result.code
-    return render_template("make-post.html", form=form)
+    return render_template("make-post.html", form=form, logged_in=current_user.is_authenticated)
 
 
 # TODO: Use a decorator so only an admin user can edit a post
@@ -178,11 +223,11 @@ def edit_post(post_id):
             result = blog_post_queries.update_post(edited_post, requested_post)
 
             if result.state == "success":
-                return redirect(url_for("show_post", post_id=requested_post_id)), result.code
+                return redirect(url_for("show_post", post_id=requested_post_id, logged_in=current_user.is_authenticated)), result.code
             else:
                 return render_template("error.html", error=result.message, code=result.code), result.code
 
-    return render_template("make-post.html", add_post_form=edit_form, post_id=post_id)
+    return render_template("make-post.html", add_post_form=edit_form, post_id=post_id, logged_in=current_user.is_authenticated)
 
 
 # TODO: Use a decorator so only an admin user can delete a post
@@ -191,7 +236,7 @@ def delete_post(post_id):
     result = blog_post_queries.delete_post(post_id)
 
     if result.state == "success":
-        return redirect(url_for('get_all_posts')), result.code
+        return redirect(url_for('get_all_posts', logged_in=current_user.is_authenticated)), result.code
     else:
         return render_template("error.html", error=result.message, code=result.code), result.code
 
